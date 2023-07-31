@@ -1,57 +1,65 @@
-#!/usr/bin/python3
-"""places_amenities.py"""
-import os
+	#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+"""
+Created on Monday 1 May 2023
+@authors: Moses 
+"""
+from flask import Blueprint, jsonify, request, abort
 from api.v1.views import app_views
-from flask import abort, jsonify, make_response, request
 from models import storage
-from models.amenity import Amenity
 from models.place import Place
-from flasgger.utils import swag_from
+from models.review import Review
 
 
-@app_views.route('/places/<string:place_id>/amenities', methods=['GET'],
+@app_views.route('/places/<string:place_id>/reviews', methods=['GET', 'POST'],
                  strict_slashes=False)
-@swag_from('documentation/place_amenity/get_id.yml', methods=['GET'])
-def get_amenities(place_id):
-    """ retrieves all amenities from a place """
-    place = storage.get(Place, place_id)
+def places_reviews(place_id):
+    """Create a new view for City objects that handles all default
+    RestFul API actions.
+    """
+    place = storage.get('Place', place_id)
     if place is None:
         abort(404)
-    amenities = [obj.to_dict() for obj in place.amenities]
-    return jsonify(amenities)
+    if request.method == 'GET':
+        return jsonify([val.to_dict() for val in place.reviews])
+    elif request.method == 'POST':
+        post = request.get_json()
+        if post is None or type(post) != dict:
+            return jsonify({'error': 'Not a JSON'}), 400
+        # elif post.get('place_id') is None:
+        #     abort(404)
+        elif post.get('user_id') is None:
+            return jsonify({'error': 'Missing user_id'}), 400
+        elif post.get('text') is None:
+            return jsonify({'error': 'Missing text'}), 400
+        elif storage.get('User', post.get('user_id')) is None:
+            abort(404)
+        new_review = Review(place_id=place_id, **post)
+        new_review.save()
+        return jsonify(new_review.to_dict()), 201
 
 
-@app_views.route('/places/<string:place_id>/amenities/<string:amenity_id>',
-                 methods=['DELETE'], strict_slashes=False)
-@swag_from('documentation/place_amenity/delete.yml', methods=['DELETE'])
-def delete_amenity(place_id, amenity_id):
-    """ delete amenity from place """
-    place = storage.get(Place, place_id)
-    if place is None:
+@app_views.route('/reviews/<string:review_id>',
+                 methods=['GET', 'PUT', 'DELETE'], strict_slashes=False)
+def get_place_review_id(review_id):
+    """Retrieves a city object with a specific id"""
+    review = storage.get('Review', review_id)
+    if review is None:
         abort(404)
-    amenity = storage.get(Amenity, amenity_id)
-    if amenity is None:
-        abort(404)
-    if amenity not in place.amenities:
-        abort(404)
-    place.amenities.remove(amenity)
-    storage.save()
-    return jsonify({})
-
-
-@app_views.route('/places/<string:place_id>/amenities/<string:amenity_id>',
-                 methods=['POST'], strict_slashes=False)
-@swag_from('documentation/place_amenity/post.yml', methods=['POST'])
-def post_amenity2(place_id, amenity_id):
-    """ post amenity by id """
-    place = storage.get(Place, place_id)
-    if place is None:
-        abort(404)
-    amenity = storage.get(Amenity, amenity_id)
-    if amenity is None:
-        abort(404)
-    if amenity in place.amenities:
-        return (jsonify(amenity.to_dict()), 200)
-    place.amenities.append(obj)
-    storage.save()
-    return (jsonify(amenity.to_dict(), 201))
+    elif request.method == 'GET':
+        return jsonify(review.to_dict())
+    elif request.method == 'DELETE':
+        review = storage.get('Review', review_id)
+        storage.delete(review)
+        storage.save()
+        return jsonify({}), 200
+    elif request.method == 'PUT':
+        put = request.get_json()
+        if put is None or type(put) != dict:
+            return jsonify({'error': 'Not a JSON'}), 400
+        for key, value in put.items():
+            if key not in ['id', 'created_at', 'updated_at',
+                           'place_id', 'user_id']:
+                setattr(review, key, value)
+                storage.save()
+        return jsonify(review.to_dict()), 200
